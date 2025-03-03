@@ -1,4 +1,4 @@
-name: Flutter APK Builder
+name: Flutter APK Builder (Debug)
 
 on:
   workflow_dispatch:
@@ -25,8 +25,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Examine repository structure
+        run: |
+          echo "Repository structure:"
+          ls -la
+          echo "Android directory structure:"
+          ls -la android || echo "No android directory found"
+          echo "pubspec.yaml contents:"
+          cat pubspec.yaml || echo "No pubspec.yaml found"
       
       - name: Setup Java
         uses: actions/setup-java@v3
@@ -43,22 +50,77 @@ jobs:
       - name: Flutter doctor
         run: flutter doctor -v
       
-      - name: Get dependencies
-        run: flutter pub get
-      
-      - name: Build APK
+      - name: Verify Flutter project
         run: |
-          flutter clean
-          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
-            flutter build apk --release
-          elif [ "${{ github.event.inputs.build_type }}" = "profile" ]; then
-            flutter build apk --profile
+          echo "Checking if this is a valid Flutter project"
+          if [ -f "pubspec.yaml" ]; then
+            echo "pubspec.yaml found"
+            if grep -q "flutter:" pubspec.yaml; then
+              echo "This appears to be a Flutter project"
+            else
+              echo "WARNING: This doesn't appear to be a Flutter project. Missing 'flutter:' in pubspec.yaml"
+            fi
           else
-            flutter build apk --debug
+            echo "ERROR: No pubspec.yaml found. This doesn't appear to be a Flutter project."
+            exit 1
+          fi
+      
+      - name: Get dependencies
+        run: |
+          echo "Running flutter pub get"
+          flutter pub get
+          echo "Dependencies installed"
+      
+      - name: Create local.properties
+        run: |
+          echo "Creating local.properties file"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cat android/local.properties
+      
+      - name: Check Android configuration
+        run: |
+          echo "Checking gradle configuration"
+          if [ -f "android/app/build.gradle" ]; then
+            cat android/app/build.gradle
+          else
+            echo "ERROR: No android/app/build.gradle found"
+            exit 1
+          fi
+      
+      - name: Build APK with verbose output
+        run: |
+          echo "Starting clean build"
+          flutter clean
+          
+          echo "Setting build parameters"
+          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          echo "Build type: $BUILD_TYPE"
+          
+          echo "Starting build with verbose output"
+          if [ "$BUILD_TYPE" = "release" ]; then
+            flutter build apk --release --verbose
+          elif [ "$BUILD_TYPE" = "profile" ]; then
+            flutter build apk --profile --verbose
+          else
+            flutter build apk --debug --verbose
+          fi
+      
+      - name: Check build output directory
+        if: always()
+        run: |
+          echo "Checking build output directory"
+          if [ -d "build/app/outputs/flutter-apk" ]; then
+            echo "APK output directory exists:"
+            ls -la build/app/outputs/flutter-apk/
+          else
+            echo "ERROR: APK output directory does not exist"
           fi
       
       - name: Upload APK
         uses: actions/upload-artifact@v3
+        if: always()
         with:
           name: app-${{ github.event.inputs.build_type }}-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            build/app/outputs/**/*.apk
