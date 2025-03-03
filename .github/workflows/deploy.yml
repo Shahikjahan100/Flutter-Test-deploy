@@ -1,0 +1,77 @@
+name: Flutter APK Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository_url:
+        description: 'GitHub repository URL (e.g., https://github.com/Shahikjahan100/GYM.git)'
+        required: true
+        type: string
+      flutter_version:
+        description: 'Flutter version'
+        required: false
+        default: '3.19.3'
+        type: string
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+          - profile
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Parse repository
+        id: repo
+        run: |
+          if [[ "${{ github.event.inputs.repository_url }}" != "" ]]; then
+            echo "repository=${{ github.event.inputs.repository_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "repository=${{ github.repository }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.repo.outputs.repository }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ github.event.inputs.flutter_version }}
+          channel: 'stable'
+      
+      - name: Flutter doctor
+        run: flutter doctor -v
+      
+      - name: Get dependencies
+        run: flutter pub get
+      
+      - name: Build APK
+        run: |
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            flutter build apk --release
+          elif [ "${{ github.event.inputs.build_type }}" = "profile" ]; then
+            flutter build apk --profile
+          else
+            flutter build apk --debug
+          fi
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-${{ github.event.inputs.build_type }}-apk
+          path: build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_type }}.apk
