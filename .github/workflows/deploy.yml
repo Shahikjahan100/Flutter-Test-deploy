@@ -1,4 +1,4 @@
-name: Flutter Grocery App APK Builder
+name: Flutter WARDROBE APK Builder
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       flutter_version:
         description: 'Flutter version'
         required: false
-        default: '3.19.3'
+        default: '3.16.0'
         type: string
       build_type:
         description: 'Build type'
@@ -24,15 +24,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          repository: 'Shahikjahan100/grocery_app'
-          token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Java
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '11'
       
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -47,29 +44,42 @@ jobs:
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
       
+      - name: Accept Android licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      
       - name: Get dependencies
         run: flutter pub get
       
-      - name: Gradle permissions
+      - name: Fix Gradle permissions
         run: |
           cd android
           chmod +x ./gradlew
+      
+      - name: Update Gradle wrapper if needed
+        run: |
+          cd android
+          ./gradlew wrapper --gradle-version 7.5
       
       - name: Build APK
         run: |
           flutter clean
           
-          # Force accept Android licenses
-          yes | flutter doctor --android-licenses || true
-          
           if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
-            flutter build apk --release --no-tree-shake-icons
+            flutter build apk --release --split-per-abi
           else
-            flutter build apk --debug --no-tree-shake-icons
+            flutter build apk --debug
           fi
       
-      - name: Upload APK
+      - name: List build outputs
+        if: always()
+        run: |
+          echo "Checking build output directory"
+          find build -name "*.apk" -type f
+      
+      - name: Upload APKs
         uses: actions/upload-artifact@v3
         with:
-          name: grocery-app-${{ github.event.inputs.build_type }}-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          name: wardrobe-app-${{ github.event.inputs.build_type }}
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            build/app/outputs/apk/**/*.apk
